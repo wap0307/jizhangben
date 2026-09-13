@@ -940,6 +940,22 @@ tbody tr.no-spend .row-total {
   border:1px dashed var(--line);
 }
 .backup-note b { color:var(--ink); }
+.bk-cloud { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:10px; background:var(--bg-soft); }
+.bk-cloud.on { border-color:var(--mint); background:linear-gradient(180deg,rgba(79,174,145,.08),transparent); }
+.bk-cloud.err { border-color:var(--coral); }
+.bk-cloud-h { font-size:13px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.bk-tag { font-size:11px; font-weight:400; padding:1px 7px; border-radius:20px; background:var(--bg-soft); color:var(--ink-2); border:1px solid var(--border); }
+.bk-tag.on { background:var(--mint); color:#fff; border-color:var(--mint); }
+.bk-tag.err { background:var(--coral); color:#fff; border-color:var(--coral); }
+.bk-cloud-code { margin-top:6px; font-size:12px; color:var(--ink-2); display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.bk-cloud-code b { font-family:var(--font-mono,monospace); font-size:14px; color:var(--ink); letter-spacing:1px; }
+.bk-cloud-b { margin-top:5px; font-size:11.5px; color:var(--ink-2); line-height:1.6; }
+.bk-snap { border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-top:10px; background:var(--bg-soft); }
+.bk-snap-h { font-size:13px; font-weight:600; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.bk-snap-list { margin-top:8px; display:flex; flex-direction:column; gap:6px; }
+.bk-snap-item { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--ink-2); }
+.bk-snap-t { flex:1; }
+
 .backup-file-row {
   display:flex; align-items:center; gap:8px; margin-top:8px;
   font-size:11.5px; color:var(--mint-dark); font-weight:600;
@@ -1454,6 +1470,7 @@ class LedgerApp {
     localStorage.setItem(this.storageKey, JSON.stringify(data));
     this.updateSaveStatus();
     this._scheduleAutoBackup();
+    this._scheduleCloudPush();
   }
 
   // 关闭/刷新前兜底：把正在编辑但未失焦的输入框写入模型，避免丢失
@@ -2519,6 +2536,7 @@ class LedgerApp {
     localStorage.setItem(this.todosKey, JSON.stringify({ todos: this.todos }));
     this.updateSaveStatus();
     this._scheduleAutoBackup();
+    this._scheduleCloudPush();
   }
 
   // 到期日：周期性事项按月换算（2 月 31 号自动取当月最后一天）
@@ -2905,6 +2923,7 @@ class LedgerApp {
     localStorage.setItem(this.assetsKey, JSON.stringify(this.assets));
     this.updateSaveStatus();
     this._scheduleAutoBackup();
+    this._scheduleCloudPush();
   }
 
   // 编辑框失焦前把值写回模型（与记账输入框同一机制）
@@ -3363,6 +3382,7 @@ class LedgerApp {
     localStorage.setItem(this.layoutKey, JSON.stringify({ order: this.cardOrder }));
     this.updateSaveStatus();
     this._scheduleAutoBackup();
+    this._scheduleCloudPush();
   }
 
   // ══════════════════════════════════════════════════════════
@@ -3709,6 +3729,268 @@ class LedgerApp {
   }
 
   // ── ⑥ 渲染 ────────────────────────────────────
+  // ══════════════════════════════════════════════════════════
+  //  ☁️ 云同步（v8.17）
+  //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
+  //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
+  // ══════════════════════════════════════════════════════════
+  get cloudApi()      { return 'https://prod-d5g2g0gkh52677ca8-1473248310.ap-shanghai.app.tcloudbase.com/ledger-sync'; }
+  get syncCodeKey()   { return 'ledger_sync_code_v1'; }
+  get cloudMetaKey()  { return 'ledger_cloud_meta_v1'; }
+  get snapKey()       { return 'ledger_snapshot_v1'; }
+
+  _cloudMeta() {
+    try { return JSON.parse(localStorage.getItem(this.cloudMetaKey) || '{}'); } catch (e) { return {}; }
+  }
+  _setCloudMeta(patch) {
+    try { localStorage.setItem(this.cloudMetaKey, JSON.stringify(Object.assign(this._cloudMeta(), patch))); } catch (e) {}
+  }
+
+  /** 8 位同步码，去掉了容易看错的 I/O/0/1 */
+  _genSyncCode() {
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    try {
+      const a = new Uint8Array(8);
+      if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+      else for (let i = 0; i < 8; i++) a[i] = Math.floor(Math.random() * 256);
+      for (let i = 0; i < 8; i++) out += abc[a[i] % abc.length];
+    } catch (e) {
+      for (let i = 0; i < 8; i++) out += abc[Math.floor(Math.random() * abc.length)];
+    }
+    return out.slice(0, 4) + '-' + out.slice(4);
+  }
+
+  cloudCode() { try { return localStorage.getItem(this.syncCodeKey) || ''; } catch (e) { return ''; } }
+  cloudOn()   { return !!this.cloudCode(); }
+
+  _ago(ts) {
+    const d = Date.now() - ts;
+    if (d < 60000) return '刚刚';
+    if (d < 3600000) return Math.floor(d / 60000) + ' 分钟前';
+    if (d < 86400000) return Math.floor(d / 3600000) + ' 小时前';
+    if (d < 2592000000) return Math.floor(d / 86400000) + ' 天前';
+    try { return new Date(ts).toLocaleDateString('zh-CN'); } catch (e) { return '很久以前'; }
+  }
+
+  async _cloudCall(action, payload) {
+    const code = this.cloudCode();
+    if (!code) return { ok: false, error: '未开启' };
+    try {
+      const res = await fetch(this.cloudApi, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: action, code: code, payload: payload || null })
+      });
+      const txt = await res.text();
+      let j = null;
+      try { j = JSON.parse(txt); } catch (e) { return { ok: false, error: 'NET' }; }
+      if (j && j.code === 'HTTPSERVICE_NONACTIVATED') return { ok: false, error: 'GATEWAY_OFF' };
+      if (j && j.code && j.ok === undefined) return { ok: false, error: String(j.code) };
+      return j || { ok: false, error: 'EMPTY' };
+    } catch (e) {
+      return { ok: false, error: 'NET' };
+    }
+  }
+
+  _cloudErrText(code) {
+    const map = {
+      'GATEWAY_OFF': '云端通道还没开通，数据仍安全存在本机',
+      'NET': '网络不通，数据仍安全存在本机',
+      '未开启': '还没开启云同步'
+    };
+    return map[code] || ('同步失败：' + code);
+  }
+
+  async cloudEnable() {
+    if (!this.cloudCode()) {
+      try { localStorage.setItem(this.syncCodeKey, this._genSyncCode()); } catch (e) {}
+    }
+    this._setCloudMeta({ status: 'syncing' });
+    this.renderBackupCard();
+    const r = await this._cloudCall('push', this._buildBackupPayload());
+    if (r.ok) {
+      this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+      this.showToast('☁️ 云同步已开启，数据已上传');
+    } else {
+      this._setCloudMeta({ status: 'error', error: r.error });
+      this.showToast('☁️ ' + this._cloudErrText(r.error));
+    }
+    this.renderBackupCard();
+  }
+
+  cloudDisable() {
+    if (!confirm('关闭云同步后，这台设备不再自动上传。\n\n云端已存的数据不会删除，下次用同一个同步码还能取回。\n\n确定关闭吗？')) return;
+    try { localStorage.removeItem(this.syncCodeKey); } catch (e) {}
+    this._setCloudMeta({ status: 'off', error: '' });
+    this.renderBackupCard();
+    this.showToast('已关闭云同步');
+  }
+
+  cloudBindCode() {
+    const cur = this.cloudCode();
+    const v = prompt(
+      (cur ? ('当前同步码：' + cur + '\n\n换设备或数据丢了？输入你保存过的同步码，把数据取回来：')
+           : '输入你的同步码（换设备、清缓存后用它把数据取回来）：')
+    );
+    if (!v) return;
+    const code = String(v).trim();
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(code)) {
+      alert('同步码格式不对。应该是像 ABCD-2345 这样 8 位字母数字（中间有个横杠）。');
+      return;
+    }
+    try { localStorage.setItem(this.syncCodeKey, code); } catch (e) {}
+    this._setCloudMeta({ status: 'syncing', error: '' });
+    this.renderBackupCard();
+    this.cloudPull(true);
+  }
+
+  cloudCopyCode() {
+    const code = this.cloudCode();
+    if (!code) return;
+    const done = () => this.showToast('同步码已复制，存到微信收藏或备忘录里');
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(done, () => this._fallbackCopy(code, done));
+      } else this._fallbackCopy(code, done);
+    } catch (e) { this._fallbackCopy(code, done); }
+  }
+  _fallbackCopy(text, done) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); ta.remove();
+      done();
+    } catch (e) { prompt('复制这段同步码：', text); }
+  }
+
+  _scheduleCloudPush() {
+    if (!this.cloudOn()) return;
+    if (this._cloudPushTimer) clearTimeout(this._cloudPushTimer);
+    this._cloudPushTimer = setTimeout(() => { this._cloudPushTimer = null; this.cloudPush(true); }, 3000);
+  }
+
+  async cloudPush(silent) {
+    if (!this.cloudOn()) return;
+    const r = await this._cloudCall('push', this._buildBackupPayload());
+    if (r.ok) this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+    else this._setCloudMeta({ status: 'error', error: r.error });
+    if (!silent) {
+      this.renderBackupCard();
+      this.showToast(r.ok ? '☁️ 已传到云端' : ('☁️ ' + this._cloudErrText(r.error)));
+    }
+  }
+
+  async cloudPull(manual) {
+    if (!this.cloudOn()) return;
+    this._setCloudMeta({ status: 'syncing' });
+    if (manual) this.renderBackupCard();
+    const r = await this._cloudCall('pull');
+    if (!r.ok) {
+      this._setCloudMeta({ status: 'error', error: r.error });
+      if (manual) { this.renderBackupCard(); this.showToast('☁️ ' + this._cloudErrText(r.error)); }
+      return;
+    }
+    const rec = r.data;
+    if (!rec || !rec.payload || !rec.payload.keys) {
+      this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+      if (manual) { this.cloudPush(true); this.showToast('云端还没有数据，已把本地数据传上去'); }
+      this.renderBackupCard();
+      return;
+    }
+    const local = this._countBackupContent(this._buildBackupPayload());
+    const remote = this._countBackupContent(rec.payload);
+
+    // 本机是空的（刚清过缓存 / 换了设备）→ 直接取回
+    if (local.keys === 0) {
+      this._applyBackup(rec.payload, 'merge');
+      this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+      this.showToast('☁️ 已从云端取回 ' + remote.months + ' 个月账目');
+      this.renderBackupCard();
+      return;
+    }
+    if (manual) {
+      const when = rec.updatedAt ? new Date(rec.updatedAt).toLocaleString('zh-CN') : '未知时间';
+      const take = confirm(
+        '云端有一份数据：' + remote.months + ' 个月账目 · ' + remote.todos + ' 条待办（更新于 ' + when + '）\n' +
+        '本机现在有 ' + local.months + ' 个月账目。\n\n' +
+        '点「确定」= 用云端补齐本机没有的（安全，不会删你现在的数据）\n' +
+        '点「取消」= 不动云端，只把本机数据传上去'
+      );
+      if (take) {
+        this._applyBackup(rec.payload, 'merge');
+        this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+        this.showToast('☁️ 已用云端数据补齐');
+      } else {
+        await this.cloudPush(true);
+      }
+      this.renderBackupCard();
+      return;
+    }
+    // 后台自动拉取：只做安全合并（补本机没有的键，绝不覆盖已有数据）
+    let added = 0;
+    Object.keys(rec.payload.keys || {}).forEach(function (k) {
+      if (localStorage.getItem(k) == null) { localStorage.setItem(k, rec.payload.keys[k]); added++; }
+    });
+    if (added) { this.loadData(); this.loadTodos(); this.loadAssets(); this.loadLayout(); this.render(); }
+    this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+    if (added) this.showToast('☁️ 云端有 ' + added + ' 项新数据，已合并');
+    this.renderBackupCard();
+  }
+
+  // ── 本地快照：改错了能回滚 ──────────────────────
+  _loadSnaps() {
+    try { const l = JSON.parse(localStorage.getItem(this.snapKey) || '[]'); return Array.isArray(l) ? l : []; }
+    catch (e) { return []; }
+  }
+
+  /** 存一份当前状态。内容没变化就不重复存。最多 8 份、总量 ≤1.2MB，防止撑爆 localStorage */
+  snapSave(label) {
+    try {
+      const keys = this._collectBackupKeys();
+      if (!Object.keys(keys).length) return false;
+      const sig = JSON.stringify(keys);
+      let list = this._loadSnaps();
+      if (list.length && list[0].sig === sig) return false;
+      list.unshift({
+        id: 'sn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        at: new Date().toISOString(),
+        label: label || '自动',
+        n: Object.keys(keys).length,
+        keys: keys,
+        sig: sig
+      });
+      let total = JSON.stringify(list).length;
+      while ((list.length > 8 || total > 1200000) && list.length > 1) {
+        list = list.slice(0, list.length - 1);
+        total = JSON.stringify(list).length;
+      }
+      localStorage.setItem(this.snapKey, JSON.stringify(list));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  snapRestore(id) {
+    const list = this._loadSnaps();
+    const s = list.filter(function (x) { return x.id === id; })[0];
+    if (!s) return;
+    if (!confirm('回到 ' + new Date(s.at).toLocaleString('zh-CN') + ' 的状态？\n\n（现在的数据会先进回收站，还能再换回来）')) return;
+    this._trashPush('回滚前的当前数据', this._collectBackupKeys());
+    Object.keys(s.keys || {}).forEach(function (k) { localStorage.setItem(k, s.keys[k]); });
+    this.loadData(); this.loadTodos(); this.loadAssets(); this.loadLayout();
+    this.applyCardOrder(); this.render();
+    this.showToast('已回滚');
+  }
+
+  snapClear() {
+    if (!confirm('清空本机全部快照？\n\n（云端数据和当前账目不受影响）')) return;
+    try { localStorage.removeItem(this.snapKey); } catch (e) {}
+    this.renderBackupCard();
+    this.showToast('快照已清空');
+  }
+
   renderBackupCard() {
     const body = document.getElementById('backupBody');
     const badge = document.getElementById('backupBadge');
@@ -3774,6 +4056,53 @@ class LedgerApp {
       </div>`;
     }
 
+    const cm = this._cloudMeta();
+    const onCloud = this.cloudOn();
+    const st = cm.status || 'ok';
+    const stTxt = st === 'error' ? '未连接' : (st === 'syncing' ? '同步中' : '已开启');
+    const lastTxt = cm.lastAt ? this._ago(cm.lastAt) : '从未';
+    const errTxt = cm.error === 'GATEWAY_OFF'
+      ? '云端通道未开通，数据在本机安全'
+      : (cm.error ? ('（' + cm.error + '）') : '');
+    const cloudHtml = onCloud ? `
+      <div class="bk-cloud ${st === 'error' ? 'err' : 'on'}">
+        <div class="bk-cloud-h">☁️ 云同步 <span class="bk-tag ${st === 'error' ? 'err' : 'on'}">${stTxt}</span></div>
+        <div class="bk-cloud-code">同步码 <b>${this.cloudCode()}</b>
+          <button class="mini-btn" onclick="app.cloudCopyCode()">复制</button></div>
+        <div class="bk-cloud-b">上次同步：${lastTxt} ${errTxt}</div>
+        <div class="backup-actions" style="margin-top:8px">
+          <button class="bk-btn" onclick="app.cloudPull(true)">📥 从云端取回</button>
+          <button class="bk-btn" onclick="app.cloudPush(false)">📤 传到云端</button>
+          <button class="bk-btn" onclick="app.cloudBindCode()">🔑 换设备</button>
+          <button class="bk-btn danger" onclick="app.cloudDisable()">关闭</button>
+        </div>
+      </div>` : `
+      <div class="bk-cloud">
+        <div class="bk-cloud-h">☁️ 云同步 <span class="bk-tag">未开启</span></div>
+        <div class="bk-cloud-b">开启后账目自动存到云端，<b>换手机、清缓存都不会丢</b>，也不用再找备份文件。</div>
+        <div class="backup-actions" style="margin-top:8px">
+          <button class="bk-btn primary" onclick="app.cloudEnable()">☁️ 开启云同步</button>
+          <button class="bk-btn" onclick="app.cloudBindCode()">🔑 我有同步码</button>
+        </div>
+      </div>`;
+
+    const snaps = this._loadSnaps();
+    const snapRows = snaps.slice(0, 4).map(sn => `
+      <div class="bk-snap-item">
+        <span class="bk-snap-t">${this._ago(new Date(sn.at).getTime())} · ${sn.n} 项 · ${this._escapeHtml(sn.label)}</span>
+        <button class="mini-btn ok" onclick="app.snapRestore('${sn.id}')">回到这时</button>
+      </div>`).join('');
+    const snapHtml = `
+      <div class="bk-snap">
+        <div class="bk-snap-h">🕘 本机快照 <span class="bk-tag">${snaps.length}</span>
+          <span style="flex:1"></span>
+          <button class="mini-btn" onclick="app.snapSave('手动')">存一份</button>
+          ${snaps.length ? '<button class="mini-btn" onclick="app.snapClear()">清空</button>' : ''}
+        </div>
+        ${snaps.length ? '<div class="bk-snap-list">' + snapRows + '</div>'
+                       : '<div class="bk-cloud-b">改账前存一份，改错了能一键回到之前。</div>'}
+      </div>`;
+
     body.innerHTML = `
       <div class="${cls}">
         <span class="bs-icon">${icon}</span>
@@ -3791,6 +4120,8 @@ class LedgerApp {
       <input type="file" id="backupImportInput" accept="application/json,.json"
              style="display:none" onchange="app.handleBackupFile(this.files[0])">
       ${fileRow}
+      ${cloudHtml}
+      ${snapHtml}
       <div class="backup-note">
         💡 <b>为什么要备份</b>：账目只保存在这台设备的浏览器里。<b>清理浏览器缓存、换手机、换浏览器都会丢，而且找不回来。</b><br>
         • <b>立即备份</b>：下载一个 .json 文件，存进手机「文件」/ 微信收藏 / 网盘，需要时能导回来。<br>
@@ -4531,6 +4862,17 @@ setTimeout(() => app.checkDailyBudget(), 800);
 
 // 暴露到 window：方便真机测试（puppeteer evaluate）与浏览器调试，不影响产品行为
 window.app = app;
+
+// ── v8.17 数据永不丢：开机自动拉取云端 + 存一份本机快照 ──
+try {
+  if (app.cloudOn()) setTimeout(function () { app.cloudPull(false); }, 1200);
+} catch (e) {}
+try {
+  setTimeout(function () {
+    if (app.snapSave && app.snapSave('打开时')) app.renderBackupCard();
+  }, 3500);
+} catch (e) {}
+
 
 // ── PWA：仅 https / localhost 下注册 Service Worker（本地 file:// 不生效）───
 if (('serviceWorker' in navigator) && (location.protocol === 'https:' || location.hostname === 'localhost')) {
