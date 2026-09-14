@@ -3775,7 +3775,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   // ══════════════════════════════════════════════════════════
@@ -3877,6 +3877,7 @@ class LedgerApp {
   _cloudErrText(code) {
     const map = {
       'GATEWAY_OFF': '云端通道还没开通，数据仍安全存在本机',
+      'CLOUD_NOT_READY': '云端还没准备好，数据仍安全存在本机',
       'NET': '网络不通，数据仍安全存在本机',
       '未开启': '还没开启云同步'
     };
@@ -3976,8 +3977,17 @@ class LedgerApp {
     }
     const rec = r.data;
     if (!rec || !rec.payload || !rec.payload.keys) {
-      this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
-      if (manual) { this.cloudPush(true); this.showToast('云端还没有数据，已把本地数据传上去'); }
+      // 云端还没有数据 —— 但要先确认「写得进去」才算同步真的可用。
+      // （v8.22 修：原来这里直接标 ok，云集合没建时会显示一个假的「已同步」，
+      //   而实际 push 是失败的 —— 等于骗用户。）
+      const w = await this._cloudCall('push', this._buildBackupPayload());
+      if (w.ok) {
+        this._setCloudMeta({ status: 'ok', lastAt: Date.now(), error: '' });
+        if (manual) this.showToast('云端还没有数据，已把本地数据传上去');
+      } else {
+        this._setCloudMeta({ status: 'error', error: w.error });
+        if (manual) this.showToast('☁️ ' + this._cloudErrText(w.error));
+      }
       this.renderBackupCard();
       return;
     }
@@ -4187,9 +4197,7 @@ class LedgerApp {
     const st = cm.status || 'ok';
     const stTxt = st === 'error' ? '未连接' : (st === 'syncing' ? '同步中' : '已开启');
     const lastTxt = cm.lastAt ? this._ago(cm.lastAt) : '从未';
-    const errTxt = cm.error === 'GATEWAY_OFF'
-      ? '云端通道未开通，数据在本机安全'
-      : (cm.error ? ('（' + cm.error + '）') : '');
+    const errTxt = cm.error ? (' · ' + this._cloudErrText(cm.error)) : '';
     const cloudHtml = onCloud ? `
       <div class="bk-cloud ${st === 'error' ? 'err' : 'on'}">
         <div class="bk-cloud-h">☁️ 云同步 <span class="bk-tag ${st === 'error' ? 'err' : 'on'}">${stTxt}</span></div>
