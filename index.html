@@ -667,7 +667,7 @@ tbody tr.no-spend .row-total {
 .ct-click:hover { color:var(--mint-dark); }
 .ct-cue { font-style:normal; font-size:9px; color:var(--ink-3); margin-left:3px; vertical-align:1px; }
 .ct-click:hover .ct-cue { color:var(--mint-dark); }
-.ct-lab-svg { cursor:pointer; }
+.ct-lab-svg { cursor:pointer; pointer-events:auto; }   /* 覆盖 .donut-lab 的 pointer-events:none，否则点不中 */
 
 /* ── Smart Toast ── */
 .toast-container {
@@ -3775,7 +3775,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20）
+  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   // ══════════════════════════════════════════════════════════
@@ -4490,7 +4490,7 @@ class LedgerApp {
       const label = `<text class="donut-lab ct-lab-svg" x="${tx.toFixed(1)}" y="${(it.ky0 + 1).toFixed(1)}" text-anchor="${anchor}" onclick="event.stopPropagation();app.showColTop('${cat.key}')" title="看这一项花得最多的 5 笔">
         <tspan class="donut-lab-name" fill="${it.color}">${this._escapeHtml(cat.name)}</tspan><tspan class="donut-lab-val" dx="5">¥${this._money(cat.value)}</tspan>
       </text>`;
-      groups += `<g class="donut-item" data-idx="${it.i}" onclick="app.highlightDonut(${it.i})" onmouseenter="app.highlightDonut(${it.i},true)" onmouseleave="app.highlightDonut(-1,true)">${slice}${leader}${label}</g>`;
+      groups += `<g class="donut-item" data-idx="${it.i}" onclick="app.showColTop('${cat.key}')" onmouseenter="app.highlightDonut(${it.i},true)" onmouseleave="app.highlightDonut(-1,true)">${slice}${leader}${label}</g>`;
     });
     const svg = `<svg viewBox="0 0 ${W} ${H}" class="donut" data-active="">
       ${groups}
@@ -4500,7 +4500,8 @@ class LedgerApp {
     return `<div class="donut-wrap">${svg}</div>`;
   }
 
-  // 点击/悬停高亮对应扇区（idx=-1 或再次点击同一项 = 取消高亮）
+  // 悬停高亮对应扇区（idx=-1 = 移出重置）。
+  // 注意：v8.21 起「点击」扇区改为弹单项 Top5（app.showColTop），不再锁定高亮。
   highlightDonut(idx, isHover) {
     const svg = document.querySelector('#summaryContent .donut');
     if (!svg) return;
