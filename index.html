@@ -3881,7 +3881,13 @@ class LedgerApp {
       'NET': '网络不通，数据仍安全存在本机',
       '未开启': '还没开启云同步'
     };
-    return map[code] || ('同步失败：' + code);
+    if (map[code]) return map[code];
+    // 云端抛回的原始技术错误（如 RESOURCE_NOT_FOUND）不直接甩给用户看，一律说人话。
+    // 双保险：即使云函数还是旧版、没返回 CLOUD_NOT_READY，卡片也不会出现英文报错。
+    if (/not\s*found|not\s*exist|RESOURCE_NOT_FOUND|collection|the reource/i.test(String(code || ''))) {
+      return '云端还没准备好，数据仍安全存在本机';
+    }
+    return '同步失败：' + code;
   }
 
   async cloudEnable() {
