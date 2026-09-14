@@ -1380,20 +1380,27 @@ class LedgerApp {
       if (data.columns && data.columns.length) this.columns = data.columns;
       this.nextColId = data.nextColId || 0;
       this.entries = data.entries || {};
-      this.cellNotes = data.cellNotes || data.notes || {};
-      // Migrate old flat notes to cellNotes
-      if (data.notes && !data.cellNotes) {
-        this.cellNotes = {};
-        for (const [day, text] of Object.entries(data.notes)) {
-          if (typeof text === 'string') {
-            // Old format: one note per day. Put under first column that has value, or a generic key
+      // 备注：新格式存在 cellNotes（{ 日: { 列key: 文本 } }）。
+      // 历史版本把同一份数据写进了 notes 字段 —— 两种都要认，且【绝不能在这里清空】。
+      // （2026-09-14 修的 bug：旧代码写 notes、读 cellNotes，读不到就走"旧格式迁移"把备注全清掉）
+      if (data.cellNotes && typeof data.cellNotes === 'object') {
+        this.cellNotes = data.cellNotes;
+      } else if (data.notes && typeof data.notes === 'object') {
+        const migrated = {};
+        for (const [day, v] of Object.entries(data.notes)) {
+          if (typeof v === 'string') {
+            // 最老的格式：一天一条字符串，挂到当天第一个有金额的列上
             const row = this.entries[day] || {};
             const firstCol = this.columns.find(c => row[c.key] && row[c.key] !== '');
-            if (firstCol) {
-              this.cellNotes[day] = { [firstCol.key]: text };
-            }
+            if (firstCol) migrated[day] = { [firstCol.key]: v };
+          } else if (v && typeof v === 'object') {
+            // 新格式被写在了 notes 里 —— 原样接住（未被重载过的月份能靠这里救回来）
+            migrated[day] = v;
           }
         }
+        this.cellNotes = migrated;
+      } else {
+        this.cellNotes = {};
       }
       this.salary = data.salary || '';
       this.insurance = data.insurance || '';
@@ -1466,6 +1473,7 @@ class LedgerApp {
       columns: this.columns,
       nextColId: this.nextColId,
       entries: this.entries,
+      cellNotes: this.cellNotes,
       notes: this.cellNotes,
       salary: this.salary,
       insurance: this.insurance,
@@ -3738,7 +3746,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18）
+  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   // ══════════════════════════════════════════════════════════
@@ -4014,6 +4022,42 @@ class LedgerApp {
       localStorage.setItem(this.snapKey, JSON.stringify(list));
       return true;
     } catch (e) { return false; }
+  }
+
+  /** 从本机快照 / 回收站里找回被旧版本清掉的备注：只补「当前没有的」，绝不覆盖已有。返回救回的天数 */
+  _salvageNotes() {
+    const self = this;
+    let saved = 0;
+    const scan = function (keys) {
+      Object.keys(keys || {}).forEach(function (k) {
+        if (!/^ledger_v2_\d{4}_\d{2}$/.test(k)) return;
+        let src = null;
+        try { src = JSON.parse(keys[k]); } catch (e) { return; }
+        if (!src) return;
+        const srcNotes = Object.assign({}, src.notes || {}, src.cellNotes || {});
+        const days = Object.keys(srcNotes).filter(function (d) {
+          return srcNotes[d] && typeof srcNotes[d] === 'object' && Object.keys(srcNotes[d]).length;
+        });
+        if (!days.length) return;
+        let cur = null;
+        try { cur = JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return; }
+        if (!cur) return;
+        const curNotes = (cur.cellNotes && typeof cur.cellNotes === 'object') ? cur.cellNotes : {};
+        let added = 0;
+        days.forEach(function (d) {
+          if (curNotes[d] && Object.keys(curNotes[d]).length) return;  // 已有就不动
+          curNotes[d] = srcNotes[d];
+          added++;
+        });
+        if (!added) return;
+        cur.cellNotes = curNotes;
+        try { localStorage.setItem(k, JSON.stringify(cur)); saved += added; } catch (e) {}
+        if (k === self.storageKey) self.cellNotes = curNotes;  // 当前月同步进内存
+      });
+    };
+    this._loadSnaps().forEach(function (s) { scan(s.keys); });
+    this._loadTrash().forEach(function (t) { scan(t.keys); });
+    return saved;
   }
 
   snapRestore(id) {
@@ -4920,6 +4964,14 @@ window.app = app;
 // ── v8.17 数据永不丢：开机自动拉取云端 + 存一份本机快照 ──
 try {
   if (app.cloudOn()) setTimeout(function () { app.cloudPull(false); }, 1200);
+} catch (e) {}
+// ── v8.19 备注抢救：旧版本会把备注写进 notes 字段，读的时候又读不到就清空。
+//    这里在开机时从本机快照 / 回收站里把还能找到的备注补回来（只补没有的，绝不覆盖）。──
+try {
+  setTimeout(function () {
+    var n = app._salvageNotes();
+    if (n > 0) { app.loadData(); app.render(); app.renderBackupCard(); app.showToast('从快照找回 ' + n + ' 天的备注'); }
+  }, 900);
 } catch (e) {}
 try {
   setTimeout(function () {
