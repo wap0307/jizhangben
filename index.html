@@ -651,6 +651,10 @@ tbody tr.no-spend .row-total {
 
 .modal-actions { display:flex; gap:10px; margin-top:16px; }
 
+/* 保存失败：红色警示，绝不假装成功（v8.23） */
+#saveStatus.save-err { color:var(--danger); font-weight:600; }
+#saveStatus.save-err b { color:var(--danger); }
+
 /* ── 项目「花得最多 Top5」弹窗（v8.20）── */
 .ct-modal { max-width:360px; width:100%; }
 .ct-row { display:flex; align-items:baseline; gap:9px; padding:8px 2px; border-bottom:1px solid var(--line-2); }
@@ -1510,9 +1514,9 @@ class LedgerApp {
       trackingSigns: this.trackingSigns,
       incomeItems: this.incomeItems,
     };
-    localStorage.setItem(this.storageKey, JSON.stringify(data));
-    try { localStorage.setItem(this.writeAtKey, String(Date.now())); } catch (e) {}
-    this.updateSaveStatus();
+    const _wr = this._lsWrite(this.storageKey, JSON.stringify(data));
+    if (_wr.ok) { try { localStorage.setItem(this.writeAtKey, String(Date.now())); } catch (e) {} }
+    this.updateSaveStatus(_wr.ok, _wr.err);
     this._scheduleAutoBackup();
     this._scheduleCloudPush();
   }
@@ -1539,9 +1543,42 @@ class LedgerApp {
     else if (el.id === 'housingInput') this.housingFund = el.value;
   }
 
-  updateSaveStatus() {
+  /** 安全写入 localStorage：写失败（配额满 / 存储不可用）时先腾空间重试，仍失败就如实返回。
+   *  绝不静默失败 —— 调用方必须把「已自动保存」改成「没能保存」。（v8.23） */
+  _lsWrite(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return { ok: true, err: '' };
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      // 腾空间 1：删掉最老的一份本机快照（至少保留 2 份，不影响回滚）
+      try {
+        const snaps = this._loadSnaps();
+        if (snaps.length > 2) {
+          localStorage.setItem(this.snapKey, JSON.stringify(snaps.slice(0, snaps.length - 1)));
+          localStorage.setItem(key, value);
+          return { ok: true, err: '' };
+        }
+      } catch (e2) {}
+      // 腾空间 2：清掉回收站
+      try {
+        localStorage.removeItem(this.trashKey);
+        localStorage.setItem(key, value);
+        return { ok: true, err: '' };
+      } catch (e3) {}
+      return { ok: false, err: msg };
+    }
+  }
+
+  updateSaveStatus(ok, err) {
     const el = document.getElementById('saveStatus');
     if (!el) return;
+    if (ok === false) {
+      el.classList.add('save-err');
+      el.innerHTML = `⚠️ <b>没能保存</b> · 本机存储已满或不可用，请到「🛡️ 数据保险箱」导出备份`;
+      return;
+    }
+    el.classList.remove('save-err');
     const t = new Date().toLocaleTimeString('zh-CN', { hour12:false });
     const bk = (typeof this._backupTimeText === 'function') ? this._backupTimeText() : '';
     el.innerHTML = `💾 已自动保存 · <b>${t}</b> · 数据存于本机浏览器（localStorage）${bk ? ` · 🛡️ ${bk}` : ''}`;
@@ -2577,8 +2614,8 @@ class LedgerApp {
   }
 
   saveTodos() {
-    localStorage.setItem(this.todosKey, JSON.stringify({ todos: this.todos }));
-    this.updateSaveStatus();
+    const _wr = this._lsWrite(this.todosKey, JSON.stringify({ todos: this.todos }));
+    this.updateSaveStatus(_wr.ok, _wr.err);
     this._scheduleAutoBackup();
     this._scheduleCloudPush();
   }
@@ -2964,8 +3001,8 @@ class LedgerApp {
 
   saveAssets() {
     this.flushAssetsInput();
-    localStorage.setItem(this.assetsKey, JSON.stringify(this.assets));
-    this.updateSaveStatus();
+    const _wr = this._lsWrite(this.assetsKey, JSON.stringify(this.assets));
+    this.updateSaveStatus(_wr.ok, _wr.err);
     this._scheduleAutoBackup();
     this._scheduleCloudPush();
   }
@@ -3423,8 +3460,8 @@ class LedgerApp {
   }
 
   saveLayout() {
-    localStorage.setItem(this.layoutKey, JSON.stringify({ order: this.cardOrder }));
-    this.updateSaveStatus();
+    const _wr = this._lsWrite(this.layoutKey, JSON.stringify({ order: this.cardOrder }));
+    this.updateSaveStatus(_wr.ok, _wr.err);
     this._scheduleAutoBackup();
     this._scheduleCloudPush();
   }
@@ -3775,7 +3812,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   // ══════════════════════════════════════════════════════════
