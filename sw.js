@@ -1,5 +1,5 @@
 /**
- * 月记账本 Service Worker（v8.18）
+ * 月记账本 Service Worker（v8.19）
  *
  * 策略：network-first（先走网络，失败才用缓存）
  * 这样不会缓存旧版本——避免老妹最怕的"改了半天看不到更新"。
@@ -10,7 +10,7 @@
  * 兼容性：file:// 下 navigator.serviceWorker 不可用 → 注册代码已加守卫，
  *         本地双击打开不报错。
  */
-const CACHE_NAME = 'ledger-app-v8.18';
+const CACHE_NAME = 'ledger-app-v8.19';
 const PRECACHE = [
   './',
   './manifest.json',
