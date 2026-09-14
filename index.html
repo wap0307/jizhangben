@@ -3812,9 +3812,12 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
+  //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
+  //     隔离键 = 同步码：每台设备首次开启时本地随机生成，云端按 code 分文档存，
+  //     彼此完全独立。不提供、也不做任何「全家共用一本账」的入口。
   // ══════════════════════════════════════════════════════════
   get cloudApi()      { return 'https://prod-d5g2g0gkh52677ca8-1473248310.ap-shanghai.app.tcloudbase.com/ledger-sync'; }
   get syncCodeKey()   { return 'ledger_sync_code_v1'; }
@@ -4247,6 +4250,7 @@ class LedgerApp {
         <div class="bk-cloud-code">同步码 <b>${this.cloudCode()}</b>
           <button class="mini-btn" onclick="app.cloudCopyCode()">复制</button></div>
         <div class="bk-cloud-b">上次同步：${lastTxt} ${errTxt}</div>
+        <div class="bk-cloud-b">各记各的 · 同步码只属于这台设备，别发给别人</div>
         <div class="backup-actions" style="margin-top:8px">
           <button class="bk-btn" onclick="app.cloudPull(true)">📥 从云端取回</button>
           <button class="bk-btn" onclick="app.cloudPush(false)">📤 传到云端</button>
@@ -4256,7 +4260,7 @@ class LedgerApp {
       </div>` : `
       <div class="bk-cloud">
         <div class="bk-cloud-h">☁️ 云同步 <span class="bk-tag">未开启</span></div>
-        <div class="bk-cloud-b">开启后账目自动存到云端，<b>换手机、清缓存都不会丢</b>，也不用再找备份文件。</div>
+        <div class="bk-cloud-b">开启后账目自动存到云端，<b>换手机、清缓存都不会丢</b>。每人一份，各记各的。</div>
         <div class="backup-actions" style="margin-top:8px">
           <button class="bk-btn primary" onclick="app.cloudEnable()">☁️ 开启云同步</button>
           <button class="bk-btn" onclick="app.cloudBindCode()">🔑 我有同步码</button>
