@@ -651,6 +651,24 @@ tbody tr.no-spend .row-total {
 
 .modal-actions { display:flex; gap:10px; margin-top:16px; }
 
+/* ── 项目「花得最多 Top5」弹窗（v8.20）── */
+.ct-modal { max-width:360px; width:100%; }
+.ct-row { display:flex; align-items:baseline; gap:9px; padding:8px 2px; border-bottom:1px solid var(--line-2); }
+.ct-row:last-of-type { border-bottom:none; }
+.ct-rank { flex:none; width:17px; text-align:center; font-size:12px; font-weight:700; color:var(--ink-3); }
+.ct-row:first-child .ct-rank { color:var(--mint-dark); }
+.ct-day { flex:none; min-width:40px; font-size:13.5px; color:var(--ink); }
+.ct-note { flex:1; font-size:11.5px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ct-val { flex:none; margin-left:auto; font-size:15px; font-weight:700; color:var(--ink); }
+.ct-foot { margin-top:10px; padding-top:9px; border-top:1px dashed var(--line); font-size:12px; color:var(--ink-2); text-align:right; }
+.ct-foot b { color:var(--ink); font-size:13px; }
+.ct-empty { padding:20px 4px; text-align:center; color:var(--ink-3); font-size:13px; }
+.ct-click { cursor:pointer; }
+.ct-click:hover { color:var(--mint-dark); }
+.ct-cue { font-style:normal; font-size:9px; color:var(--ink-3); margin-left:3px; vertical-align:1px; }
+.ct-click:hover .ct-cue { color:var(--mint-dark); }
+.ct-lab-svg { cursor:pointer; }
+
 /* ── Smart Toast ── */
 .toast-container {
   position:fixed; top:70px; left:50%; transform:translateX(-50%);
@@ -1205,6 +1223,17 @@ tbody tr.no-spend .row-total {
       <button class="btn btn-primary" onclick="app.saveReceipt()" data-page-node-id="zGSeJe4Rv53FX1l1FKamNQ">💾 保存到手机</button>
       <button class="btn btn-secondary" onclick="app.closeReceipt()" data-page-node-id="7oCLW47xamdYn4lWBQ0i2X">关闭</button>
     </div>
+  </div>
+</div>
+
+<!-- 项目 Top5 弹窗（v8.20）：点汇总里的项目名 → 看这一项本月花得最多的 5 笔 -->
+<div class="modal-overlay hidden" id="colTopModal" onclick="app.closeColTop()">
+  <div class="modal-content ct-modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title" id="colTopTitle">📊 本月花得最多</div>
+      <button class="modal-close" onclick="app.closeColTop()">✕</button>
+    </div>
+    <div id="colTopBody"></div>
   </div>
 </div>
 
@@ -3746,7 +3775,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19）
+  //  ☁️ 云同步（v8.17） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   // ══════════════════════════════════════════════════════════
@@ -4458,7 +4487,7 @@ class LedgerApp {
       const leader = `<polyline class="donut-leader" points="${it.ex.toFixed(1)},${it.ey.toFixed(1)} ${it.kx.toFixed(1)},${it.ky0.toFixed(1)} ${it.lx},${it.ky0.toFixed(1)}" stroke="${it.color}"/>`;
       const anchor = it.side === 'right' ? 'end' : 'start';
       const tx = it.lx;
-      const label = `<text class="donut-lab" x="${tx.toFixed(1)}" y="${(it.ky0 + 1).toFixed(1)}" text-anchor="${anchor}">
+      const label = `<text class="donut-lab ct-lab-svg" x="${tx.toFixed(1)}" y="${(it.ky0 + 1).toFixed(1)}" text-anchor="${anchor}" onclick="event.stopPropagation();app.showColTop('${cat.key}')" title="看这一项花得最多的 5 笔">
         <tspan class="donut-lab-name" fill="${it.color}">${this._escapeHtml(cat.name)}</tspan><tspan class="donut-lab-val" dx="5">¥${this._money(cat.value)}</tspan>
       </text>`;
       groups += `<g class="donut-item" data-idx="${it.i}" onclick="app.highlightDonut(${it.i})" onmouseenter="app.highlightDonut(${it.i},true)" onmouseleave="app.highlightDonut(-1,true)">${slice}${leader}${label}</g>`;
@@ -4513,7 +4542,7 @@ class LedgerApp {
       const pct = Math.max(3, Math.round(d.value / max * 100));
       const overBudget = d.budget > 0 && d.value > d.budget;
       return `<div class="sumbar-row">
-        <span class="sumbar-label">${this._escapeHtml(d.name)}</span>
+        <span class="sumbar-label ct-click" onclick="app.showColTop('${d.key}')" title="看这一项花得最多的 5 笔">${this._escapeHtml(d.name)}<i class="ct-cue">▸</i></span>
         <div class="sumbar-track"><div class="sumbar-fill" style="width:${pct}%;background:${this._palette(i)}"></div></div>
         <span class="sumbar-val">¥${this._money(d.value)}</span>
         ${overBudget ? '<span class="sumbar-over">⚠️</span>' : ''}
@@ -4528,7 +4557,7 @@ class LedgerApp {
       const budget = c.budget || 0;
       const overBudget = budget > 0 && total > budget;
       html += `<div class="summary-row">
-        <span class="summary-label">${this._escapeHtml(c.name)}</span>
+        <span class="summary-label ct-click" onclick="app.showColTop('${c.key}')" title="看这一项花得最多的 5 笔">${this._escapeHtml(c.name)}<i class="ct-cue">▸</i></span>
         <span class="summary-val${overBudget ? ' expense' : ''}">
           ¥${this._money(total)}
           ${budget > 0 ? ` <span style="font-size:11px;font-weight:400;color:var(--ink-2);">/ 预算 ¥${budget}</span>` : ''}
@@ -4563,6 +4592,56 @@ class LedgerApp {
       </div>`;
     });
     return html;
+  }
+
+  /** 某一项本月花得最多的 N 笔（从大到小）。0 值与空值不算。 */
+  getColTopItems(colKey, n) {
+    const list = [];
+    for (let d = 1; d <= 31; d++) {
+      const row = this.entries[String(d)];
+      if (!row) continue;
+      const v = parseFloat(row[colKey]);
+      if (isNaN(v) || v === 0) continue;
+      const note = (this.cellNotes[String(d)] || {})[colKey] || '';
+      list.push({ day: d, value: this._round2(v), note: note });
+    }
+    list.sort((a, b) => b.value - a.value);   // 金额从大到小
+    return typeof n === 'number' ? list.slice(0, n) : list;
+  }
+
+  /** 点汇总里的项目名 → 弹出这一项本月花得最多的 5 笔（v8.20） */
+  showColTop(colKey) {
+    const col = this.columns.find(c => c.key === colKey);
+    if (!col) return;
+    const all = this.getColTopItems(colKey);
+    const top = all.slice(0, 5);
+    const total = this.getColTotal(colKey);
+
+    const t = document.getElementById('colTopTitle');
+    if (t) t.textContent = '📊 ' + col.name + ' · 本月花得最多';
+
+    let html;
+    if (!all.length) {
+      html = '<div class="ct-empty">这一项本月还没有记录</div>';
+    } else {
+      html = top.map((it, i) => `<div class="ct-row">
+        <span class="ct-rank">${i + 1}</span>
+        <span class="ct-day">${it.day} 号</span>
+        <span class="ct-note">${this._escapeHtml(it.note)}</span>
+        <span class="ct-val">¥${this._money(it.value)}</span>
+      </div>`).join('');
+      html += `<div class="ct-foot">本月共 <b>${all.length}</b> 笔 · 合计 <b>¥${this._money(total)}</b></div>`;
+    }
+
+    const box = document.getElementById('colTopBody');
+    if (box) box.innerHTML = html;
+    const ov = document.getElementById('colTopModal');
+    if (ov) ov.classList.remove('hidden');
+  }
+
+  closeColTop() {
+    const ov = document.getElementById('colTopModal');
+    if (ov) ov.classList.add('hidden');
   }
 
   switchSummaryView(mode) {
