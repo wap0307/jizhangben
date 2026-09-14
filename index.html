@@ -667,7 +667,7 @@ tbody tr.no-spend .row-total {
 .ct-click:hover { color:var(--mint-dark); }
 .ct-cue { font-style:normal; font-size:9px; color:var(--ink-3); margin-left:3px; vertical-align:1px; }
 .ct-click:hover .ct-cue { color:var(--mint-dark); }
-.ct-lab-svg { cursor:pointer; pointer-events:auto; }   /* 覆盖 .donut-lab 的 pointer-events:none，否则点不中 */
+.donut-lab.ct-lab-svg { cursor:pointer; pointer-events:auto; }   /* 双类提高优先级：.donut-lab{pointer-events:none} 定义在后面，单类盖不住 */
 
 /* ── Smart Toast ── */
 .toast-container {
