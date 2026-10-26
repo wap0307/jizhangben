@@ -890,6 +890,13 @@ tbody tr.no-spend .row-total {
 .assets-save-grid input:focus, .asset-row input:focus { outline:none; border-color:var(--mint-dark); }
 .assets-save-grid .as-field.wide { grid-column:1/-1; }
 .assets-save-grid input.num { text-align:right; font-family:"SF Mono","Menlo",monospace; }
+/* 只读展示（当前存款 = 本月结余，自动算，不再手填）v8.25 */
+.assets-save-grid .as-ro {
+  border:1px dashed var(--line); border-radius:8px; padding:7px 9px;
+  font-size:14px; color:var(--mint-dark); font-weight:700;
+  font-family:"SF Mono","Menlo",monospace; text-align:right; background:var(--cream-2);
+}
+.assets-save-grid .as-ro .as-ro-sub { font-size:11px; color:var(--ink-3); font-weight:400; font-family:inherit; }
 /* 外账行 */
 .asset-row {
   display:flex; align-items:center; gap:6px; flex-wrap:wrap;
@@ -3011,7 +3018,7 @@ class LedgerApp {
   flushAssetsInput() {
     const el = document.activeElement;
     if (!el || !el.id) return;
-    const fieldMap = { as_cur:'current', as_tgt:'target', as_name:'targetName', as_plan:'monthlyPlan', as_repay:'repayMonthly' };
+    const fieldMap = { as_tgt:'target', as_name:'targetName', as_plan:'monthlyPlan', as_repay:'repayMonthly' };
     if (!(el.id in fieldMap)) return;
     const f = fieldMap[el.id];
     if (f === 'repayMonthly') this.assets.repayMonthly = el.value;
@@ -3020,9 +3027,14 @@ class LedgerApp {
 
   _assetNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 
+  // 当前存款 = 本月结余（本月收入 − 本月支出），动态计算，不再手填（v8.25）
+  _currentSavings() {
+    return this._round2(this.getNetIncome() - this.getGrandTotal());
+  }
+
   // 净资产 = 存款当前 + 别人欠我的 − 我欠别人的
   _netWorth() {
-    const sv = this._assetNum(this.assets.savings.current);
+    const sv = this._currentSavings();   // v8.25：当前存款动态 = 本月结余
     let owe = 0, recv = 0;
     (this.assets.debts || []).forEach(d => {
       if (d.cleared) return;
@@ -3241,7 +3253,7 @@ class LedgerApp {
           <span class="grow"></span>
         </div>
         <div class="assets-save-grid">
-          <div class="as-field"><label>当前存款</label><input class="num" id="as_cur" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.current)}" placeholder="0.00" onchange="app.setSavingsField('current',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
+          <div class="as-field"><label>当前存款</label><div class="as-ro" id="as_cur_ro">¥${this._money(this._currentSavings())}<span class="as-ro-sub">＝本月结余</span></div></div>
           <div class="as-field"><label>目标金额</label><input class="num" id="as_tgt" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.target)}" placeholder="不设则留空" onchange="app.setSavingsField('target',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
           <div class="as-field"><label>每月计划存</label><input class="num" id="as_plan" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.monthlyPlan)}" placeholder="留空=按结余" onchange="app.setSavingsField('monthlyPlan',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
           <div class="as-field"><label>目标名字</label><input id="as_name" value="${esc(sv.targetName)}" placeholder="选填" onchange="app.setSavingsField('targetName',this.value)"></div>
@@ -3279,7 +3291,7 @@ class LedgerApp {
   // 只刷新动态区（进度条/达标预估/还款推演/应收汇总 + 预算提示），不重建输入行 → 编辑不丢焦点
   refreshAssetsDyn() {
     const sv = this.assets.savings;
-    const cur = this._assetNum(sv.current);
+    const cur = this._currentSavings();   // v8.25：当前存款动态 = 本月结余
     const tgt = this._assetNum(sv.target);
     const esc = s => this._escapeHtml(s == null ? '' : String(s));
 
@@ -3418,7 +3430,7 @@ class LedgerApp {
       const oweTotal = (this.assets.debts || []).filter(x => x.dir === 'owe' && !x.cleared).reduce((s, x) => s + this._assetNum(x.amount), 0);
       this._celebrate('🎉', '这一笔，清了。', `「${this._escapeHtml(who)}」¥${this._money(amt)} 已经还上。<br>你现在还欠 <b>${remain} 笔</b>，不是 ${remain + 1} 笔了。${oweTotal <= 0 ? '<br><b>全部还清了，好样的！</b>' : ''}`);
     } else {
-      this._celebrate('🤝', '这笔，收回来了。', `「${this._escapeHtml(who)}」¥${this._money(amt)} 已经到账。<br>外面还剩 <b>${remain} 笔</b>应收。记得把这笔钱加到「当前存款」里 🎯`);
+      this._celebrate('🤝', '这笔，收回来了。', `「${this._escapeHtml(who)}」¥${this._money(amt)} 已经到账。<br>外面还剩 <b>${remain} 笔</b>应收。记得把这笔钱记到「本月收入与扣款」里，本月结余会自动加上 🎯`);
     }
     this.renderAssets();
   }
@@ -3812,7 +3824,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
