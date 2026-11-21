@@ -339,10 +339,17 @@ tbody tr.no-spend .cell-input {
 .day-entry-overlay.hidden { display:none; }
 .day-entry-card {
   background:var(--paper); border-radius:16px; padding:20px;
-  max-width:420px; width:100%; max-height:85vh; overflow-y:auto;
+  max-width:420px; width:100%; max-height:85vh;
+  display:flex; flex-direction:column; overflow:hidden;
 }
 .day-entry-header {
   display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
+  flex-shrink:0;
+}
+/* 中间内容可上下滚动，标题与底部按钮固定（v8.29） */
+.day-entry-scroll {
+  flex:1 1 auto; min-height:0;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
 }
 .day-entry-title { font-size:16px; font-weight:700; }
 .day-entry-close {
@@ -388,7 +395,7 @@ tbody tr.no-spend .cell-input {
 }
 .entry-row-note:focus { outline:none; border-color:var(--mint-dark); }
 .entry-row-note::placeholder { color:#ccc; }
-.day-entry-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+.day-entry-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; flex-shrink:0; }
 
 /* ── Row Total ── */
 .row-total {
@@ -1214,13 +1221,15 @@ tbody tr.no-spend .row-total {
       <span class="day-entry-title" id="dayEntryTitle" data-page-node-id="Szsa23oktooFoudPqRIXLa">📋 快录 — 8月9日 周日</span>
       <button class="day-entry-close" onclick="app.closeDayEntry()" data-page-node-id="BYSLdg4yY4HeEI4jdhtKrg">✕</button>
     </div>
-    <div class="voice-section" data-page-node-id="r327QjCurnJeFr3TNz6Pwj">
-      <button class="voice-btn" id="voiceBtn" onclick="app.toggleVoice()" data-page-node-id="CvEKs2TQXaIo4v40zxLqCe">
-        🎤 语音录入当天全部花销
-      </button>
-      <div class="voice-result hidden" id="voiceResult" data-page-node-id="Hicasgv1poqdSuffhNTWiZ"></div>
+    <div class="day-entry-scroll" data-page-node-id="dEScroll001">
+      <div class="voice-section" data-page-node-id="r327QjCurnJeFr3TNz6Pwj">
+        <button class="voice-btn" id="voiceBtn" onclick="app.toggleVoice()" data-page-node-id="CvEKs2TQXaIo4v40zxLqCe">
+          🎤 语音录入当天全部花销
+        </button>
+        <div class="voice-result hidden" id="voiceResult" data-page-node-id="Hicasgv1poqdSuffhNTWiZ"></div>
+      </div>
+      <div class="entry-grid" id="entryGrid" data-page-node-id="cTmhuAG1YkWzinOj4mvzen"></div>
     </div>
-    <div class="entry-grid" id="entryGrid" data-page-node-id="cTmhuAG1YkWzinOj4mvzen"></div>
     <div class="day-entry-actions" data-page-node-id="R3PDRViwe3CiXmquJvd6Fs">
       <button class="btn btn-secondary" style="flex:0;min-width:80px;padding:8px 16px;font-size:13px;" onclick="app.closeDayEntry()" data-page-node-id="g6iGE0T6rxS4kwNF7BEvQH">取消</button>
       <button class="btn btn-primary" style="flex:0;min-width:80px;padding:8px 16px;font-size:13px;" onclick="app.saveDayEntry()" data-page-node-id="3JmAuHbz9Mzr8YQLOoF5Wt">保存</button>
@@ -3819,7 +3828,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  🗑️ 删「提醒与待办」+「数据保险箱」卡片·备份改为底部按钮·存款外账去解释词（v8.28） + 🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  📱 记账弹框可滚动·按钮固定（v8.29） + 🗑️ 删「提醒与待办」+「数据保险箱」卡片·备份改为底部按钮·存款外账去解释词（v8.28） + 🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
