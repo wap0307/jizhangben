@@ -420,7 +420,7 @@ tbody tr.no-spend .row-total {
 
 /* ── Extra Tracking ── */
 .tracking-grid {
-  display:grid; grid-template-columns:repeat(3,1fr); gap:10px;
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;
 }
 /* 收入项：名称 + ＋/− + 金额 同一行 */
 .tracking-item {
@@ -725,11 +725,12 @@ tbody tr.no-spend .row-total {
   .title-hint { display:none; }   /* 窄屏隐藏提示小字，给标题行按钮腾地方 */
   .card-title { gap:6px; }
   .budget-grid { grid-template-columns:repeat(auto-fill, minmax(118px,1fr)); gap:6px; }
-  /* 收入项内部已合并成一行，手机上三列会挤到看不清 → 改两列，保证每项仍是一行 */
-  .tracking-grid { grid-template-columns:repeat(2,1fr); gap:6px; }
-  .tracking-item { padding:7px 26px 7px 8px; gap:5px; }
+  /* 收入项内部改成上下堆叠（名称一行、符号+金额一行），强制列宽不撑大 → 手机不再向右滑动（v8.31） */
+  .tracking-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+  .tracking-item { padding:7px 26px 7px 8px; gap:5px; flex-direction:column; align-items:stretch; }
   .tracking-item input:not(.income-name-input) { padding:6px 6px; font-size:14px; flex:1 1 54px; }
-  .income-name-input { flex:1 1 44px; font-size:12px; padding:3px 4px; }
+  .income-name-input { flex:none; width:100%; font-size:12px; padding:3px 4px; }
+  .tracking-input-row { width:100%; margin-left:0; justify-content:flex-end; }
   .sign-btn { width:28px; height:28px; flex:0 0 28px; font-size:15px; }
   .budget-item { padding:7px 24px 7px 8px; gap:4px; }
   .budget-amount-input { width:54px; font-size:12px; padding:3px 4px; }
@@ -887,22 +888,23 @@ tbody tr.no-spend .row-total {
 .assets-sec-title .grow { flex:1; }
 /* 存款表单（2 列网格） */
 .assets-save-grid {
-  display:grid; grid-template-columns:repeat(2,1fr); gap:8px;
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;
 }
-.assets-save-grid .as-field { display:flex; flex-direction:column; gap:3px; }
+.assets-save-grid .as-field { display:flex; flex-direction:column; gap:3px; min-width:0; }
 .assets-save-grid .as-field label { font-size:11px; color:var(--ink-2); font-weight:600; }
 .assets-save-grid input, .asset-row input, .assets-repay input {
   border:1px solid var(--line); border-radius:8px; padding:7px 9px;
   font-size:14px; background:#fff; color:var(--ink); font-family:inherit; min-width:0;
 }
+.assets-save-grid .as-field > input, .assets-save-grid .as-field > .as-ro { width:100%; box-sizing:border-box; }
 .assets-save-grid input:focus, .asset-row input:focus { outline:none; border-color:var(--mint-dark); }
 .assets-save-grid .as-field.wide { grid-column:1/-1; }
 .assets-save-grid input.num { text-align:right; font-family:"SF Mono","Menlo",monospace; }
-/* 只读展示（当月存款 = 本月结余，自动算，不再手填）v8.25 / v8.30 文案改「当月存款」+ 两列紧凑 */
+/* 只读展示（当月存款 = 本月结余，自动算，不再手填）v8.25 / v8.31 风格与输入框统一：白底实线 */
 .assets-save-grid .as-ro {
-  border:1px dashed var(--line); border-radius:8px; padding:7px 9px;
-  font-size:14px; color:var(--mint-dark); font-weight:700;
-  font-family:"SF Mono","Menlo",monospace; text-align:right; background:var(--cream-2);
+  border:1px solid var(--line); border-radius:8px; padding:7px 9px;
+  font-size:14px; color:var(--ink); font-weight:600;
+  font-family:"SF Mono","Menlo",monospace; text-align:right; background:#fff;
   display:flex; flex-direction:column; align-items:flex-end; justify-content:center; gap:1px;
 }
 .assets-save-grid .as-ro .as-ro-sub { font-size:11px; color:var(--ink-3); font-weight:400; font-family:inherit; }
@@ -1077,9 +1079,6 @@ tbody tr.no-spend .row-total {
       </span>
     </div>
     <div class="tracking-grid" id="incomeGrid" data-page-node-id="jzurR2QHNvwIuSEeN06o6r"></div>
-    <div style="margin-top:8px;font-size:11px;color:var(--ink-2);" data-page-node-id="ryEjKtI1R5m38PBBBQiouL">
-      默认按「加号」计入收入；点符号可切成减号当作扣款（如公积金，按你的口径自行选择）。
-    </div>
   </div>
 
   <!-- ② 类别管理 & 预算 -->
@@ -3829,7 +3828,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  🏷️ 当前存款→当月存款·存款外账下沉·存款目标两列（v8.30） + 📱 记账弹框可滚动·按钮固定（v8.29） + 🗑️ 删「提醒与待办」+「数据保险箱」卡片·备份改为底部按钮·存款外账去解释词（v8.28） + 🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当月存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  📐 收入项·存款目标不再溢出卡片（minmax(0,1fr)）+ 删「默认…」提示 + 输入框风格统一（v8.31） + 🏷️ 当前存款→当月存款·存款外账下沉·存款目标两列（v8.30） + 📱 记账弹框可滚动·按钮固定（v8.29） + 🗑️ 删「提醒与待办」+「数据保险箱」卡片·备份改为底部按钮·存款外账去解释词（v8.28） + 🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当月存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
