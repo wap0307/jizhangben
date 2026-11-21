@@ -1172,51 +1172,11 @@ tbody tr.no-spend .row-total {
     <div id="analyticsContent" data-page-node-id="W0rxjeqe1UbNLjohyDlukC"></div>
   </div>
 
-  <!-- ⑦ 数据保险箱（防丢数据，默认在提醒待办之上） -->
-  <div class="card sortable-card" data-card="backup" id="backupCard"
-       ondragover="app.onCardDragOver(event)"
-       ondrop="app.onCardDrop(event,'backup')"
-       ondragend="app.onCardDragEnd(event)" data-page-node-id="bkCard001">
-    <div class="card-title sortable-handle" draggable="true" title="拖我可调整卡片顺序"
-         ondragstart="app.onCardDragStart(event,'backup')" data-page-node-id="bkTitle001">
-      <span class="icon" data-page-node-id="bkIcon001">🛡️</span> 数据保险箱
-      <span class="title-hint" data-page-node-id="bkHint001">（清缓存会丢数据，请定期备份）</span>
-      <span class="budget-total" id="backupBadge" data-page-node-id="bkBadge001"></span>
-      <span class="card-sort" data-page-node-id="bkSort001">
-        <button onclick="event.stopPropagation(); app.moveCard('backup',-1)" title="上移" data-page-node-id="bkUp001">↑</button>
-        <button onclick="event.stopPropagation(); app.moveCard('backup',1)" title="下移" data-page-node-id="bkDn001">↓</button>
-      </span>
-    </div>
-    <div id="backupBody" data-page-node-id="bkBody001"></div>
-  </div>
-
-  <!-- ⑧ 提醒与待办（默认置底） -->
-  <div class="card sortable-card" data-card="todo"
-       ondragover="app.onCardDragOver(event)"
-       ondrop="app.onCardDrop(event,'todo')"
-       ondragend="app.onCardDragEnd(event)" data-page-node-id="4ZKS8ho8MQhNlHbj0yU99A">
-    <div class="card-title sortable-handle" draggable="true" title="拖我可调整卡片顺序"
-         ondragstart="app.onCardDragStart(event,'todo')" data-page-node-id="MARw42CFnyfZ7Pbpe9CYz7">
-      <span class="icon" data-page-node-id="aGL0VXM8dfHrR60VhCaICn">🔔</span> 提醒与待办
-      <span class="title-hint" data-page-node-id="EGsRKhOIBoXGqXkxQTlNQq">（还款 / 缴费 / 发薪 / 报销 / 退款 / 核实 / 应收回款）</span>
-      <span style="margin-left:auto;display:flex;gap:6px;align-items:center;" data-page-node-id="7OwtEDRf5thJrLSEqEwfPh">
-        <button class="expand-btn" id="todoAddBtn" onclick="app.toggleTodoForm()" data-page-node-id="eLYh9MNZL3aou4F7cUrH0i">＋ 添加事项</button>
-        <button class="expand-btn" onclick="app.exportTodosICS()" data-page-node-id="hjFGJFjz6lhv7VpMlJBYt0">📅 导出到日历</button>
-        <span class="card-sort" data-page-node-id="yI3I6bq930LEUsTdA8N2P0">
-          <button onclick="event.stopPropagation(); app.moveCard('todo',-1)" title="上移" data-page-node-id="9IGBJmuMzndf963c8qo41X">↑</button>
-          <button onclick="event.stopPropagation(); app.moveCard('todo',1)" title="下移" data-page-node-id="kk9V9XVqpYAeiRGpgd06gL">↓</button>
-        </span>
-      </span>
-    </div>
-    <div id="todoForm" style="display:none;" data-page-node-id="0yul4yTfCBaqJ1StPe57JB"></div>
-    <div id="todoAlert" data-page-node-id="9UCiB478jA3eKIlkfTnOB1"></div>
-    <div id="todoList" data-page-node-id="xp8viTaaITWGmGiynqPoOt"></div>
-  </div>
-
   <!-- 操作按钮 -->
   <div class="btn-row" data-page-node-id="9SROoYcKS69HOFPxLkx5cQ">
     <button class="btn btn-primary" onclick="app.generateReceipt()" data-page-node-id="DYThhcyiTQojWA9BdhUElI">🧾 生成月结小票</button>
     <button class="btn btn-green" onclick="app.exportNoSpendDays()" data-page-node-id="2vpsOA9n8EGcqfW9UdWcVs">📅 导出无花销日</button>
+    <button class="btn btn-green" onclick="app.exportBackup()" data-page-node-id="bkBackupBtn001">📤 立即备份</button>
     <button class="btn btn-secondary" onclick="app.clearMonth()" data-page-node-id="JhKdsI3dPRMXt2ltqigIE9">🗑️ 清空本月</button>
   </div>
 </div>
@@ -1311,7 +1271,7 @@ const TODO_TYPES = {
 
 // 卡片默认顺序（可拖动或点 ↑↓ 调整，存 ledger_layout_v1）
 // 默认：收入置顶、提醒与待办置底
-const CARD_ORDER_DEFAULT = ['ledger', 'income', 'budget', 'assets', 'summary', 'analytics', 'backup', 'todo'];
+const CARD_ORDER_DEFAULT = ['ledger', 'income', 'budget', 'assets', 'summary', 'analytics'];
 const CARD_NAMES = {
   income:'本月收入与扣款', budget:'预算', ledger:'每日记账',
   assets:'存款与外账', summary:'本月汇总', analytics:'统计分析',
@@ -1363,7 +1323,7 @@ class LedgerApp {
     // 超过 7 天没备份，进页面时提醒一次
     const _d = this._daysSinceBackup();
     if (_d !== null && _d > 7) {
-      setTimeout(() => this.showToast(`已经 ${_d} 天没备份了，去「🛡️ 数据保险箱」备份一下吧`), 1600);
+      setTimeout(() => this.showToast(`已经 ${_d} 天没备份了，点底部「📤 立即备份」存一份吧`), 1600);
     }
   }
 
@@ -1581,7 +1541,7 @@ class LedgerApp {
     if (!el) return;
     if (ok === false) {
       el.classList.add('save-err');
-      el.innerHTML = `⚠️ <b>没能保存</b> · 本机存储已满或不可用，请到「🛡️ 数据保险箱」导出备份`;
+      el.innerHTML = `⚠️ <b>没能保存</b> · 本机存储已满或不可用，请点底部「📤 立即备份」导出备份`;
       return;
     }
     el.classList.remove('save-err');
@@ -3261,11 +3221,11 @@ class LedgerApp {
     const debtRow = (d, isOwe) => `
       <div class="asset-row ${d.cleared ? 'cleared' : ''}">
         <span class="tag ${isOwe ? 'owe' : 'recv'}">${isOwe ? '🙋 我欠' : '🤝 欠我'}</span>
-        <input class="name" id="as_dname_${d.id}" value="${esc(d.name)}" placeholder="${isOwe ? '欠谁 / 哪张卡' : '谁欠的 / 什么事'}"
+        <input class="name" id="as_dname_${d.id}" value="${esc(d.name)}"
           onchange="app.setDebtField('${d.id}','name',this.value)">
         <input class="num" id="as_damt_${d.id}" type="number" step="0.01" inputmode="decimal" value="${this._numDisp(d.amount)}" placeholder="金额"
           onchange="app.setDebtField('${d.id}','amount',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)">
-        ${isOwe && !d.cleared ? `<input class="num" id="as_drate_${d.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(d.rate)}" placeholder="年利率%" title="年利率（%，可留空=无息估算）"
+        ${isOwe && !d.cleared ? `<input class="num" id="as_drate_${d.id}" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(d.rate)}" placeholder="年利率%"
           onchange="app.setDebtField('${d.id}','rate',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)" style="width:88px;">` : ''}
         ${isOwe && !d.cleared ? '<span style="font-size:10px;color:var(--ink-3);">%</span>' : ''}
         ${d.cleared ? `<span class="done-mark">✔ ${isOwe ? '已还清' : '已收回'} ${esc(d.clearedAt)}</span><span class="grow"></span>` : ''}
@@ -3293,9 +3253,9 @@ class LedgerApp {
         </div>
         <div class="assets-save-grid">
           <div class="as-field"><label>当前存款</label><div class="as-ro" id="as_cur_ro">¥${this._money(this._currentSavings())}<span class="as-ro-sub">＝本月结余</span></div></div>
-          <div class="as-field"><label>目标金额</label><input class="num" id="as_tgt" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.target)}" placeholder="不设则留空" onchange="app.setSavingsField('target',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
-          <div class="as-field"><label>每月计划存</label><input class="num" id="as_plan" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.monthlyPlan)}" placeholder="留空=按结余" onchange="app.setSavingsField('monthlyPlan',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
-          <div class="as-field"><label>目标名字</label><input id="as_name" value="${esc(sv.targetName)}" placeholder="选填" onchange="app.setSavingsField('targetName',this.value)"></div>
+          <div class="as-field"><label>目标金额</label><input class="num" id="as_tgt" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.target)}" onchange="app.setSavingsField('target',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
+          <div class="as-field"><label>每月计划存</label><input class="num" id="as_plan" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(sv.monthlyPlan)}" onchange="app.setSavingsField('monthlyPlan',this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)"></div>
+          <div class="as-field"><label>目标名字</label><input id="as_name" value="${esc(sv.targetName)}" onchange="app.setSavingsField('targetName',this.value)"></div>
         </div>
         <div id="assetsSaveDyn"></div>
       </div>
@@ -3308,7 +3268,7 @@ class LedgerApp {
         <div class="assets-repay">
           <span>每月可还</span>
           <input id="as_repay" type="number" step="0.01" min="0" inputmode="decimal" value="${this._numDisp(this.assets.repayMonthly)}"
-            placeholder="留空=自动估算" onchange="app.setRepayMonthly(this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)">
+            onchange="app.setRepayMonthly(this.value)" onfocus="app.numFocus(this)" onblur="app.numBlur(this)">
           <span style="font-size:11px;opacity:.75;" id="assetsRepayHint"></span>
         </div>
         ${(activeOwes.length || doneOwes.length) ? [...activeOwes, ...doneOwes].map(d => debtRow(d, true)).join('') : '<div class="assets-empty">暂无记录</div>'}
@@ -3495,14 +3455,10 @@ class LedgerApp {
     let saved = null;
     if (raw) { try { saved = JSON.parse(raw).order; } catch(e) {} }
     if (Array.isArray(saved) && saved.length) {
-      // 只保留仍存在的卡片
+      // 只保留仍存在的卡片，缺失的补到末尾
       const valid = saved.filter(id => CARD_ORDER_DEFAULT.includes(id));
-      // 把新增的卡片补进去：放在 todo（提醒待办）之前，保持"提醒待办默认置底"
       CARD_ORDER_DEFAULT.forEach(id => {
-        if (valid.includes(id)) return;
-        const ti = valid.indexOf('todo');
-        if (id === 'todo' || ti < 0) valid.push(id);
-        else valid.splice(ti, 0, id);
+        if (!valid.includes(id)) valid.push(id);
       });
       this.cardOrder = valid;
     } else {
@@ -3863,7 +3819,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  🗑️ 删「提醒与待办」+「数据保险箱」卡片·备份改为底部按钮·存款外账去解释词（v8.28） + 🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
@@ -4826,7 +4782,7 @@ class LedgerApp {
   clearMonth() {
     if (!confirm(
       `确定要清空 ${this.year}年${this.month}月 的所有数据吗？\n\n` +
-      `放心，清空前会自动存一份到「🛡️ 数据保险箱 → 回收站」，7 天内还能还原。`
+      `清空前会自动存一份备份。`
     )) return;
 
     // 先落盘并压入回收站，保证误操作可还原
