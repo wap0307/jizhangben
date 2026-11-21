@@ -870,6 +870,7 @@ tbody tr.no-spend .row-total {
 .assets-summary .as-cell .as-val.mint  { color:var(--mint-dark); }
 .assets-summary .as-cell .as-val.coral { color:var(--danger); }
 .assets-summary .as-cell .as-val.warn  { color:var(--warn); }
+.assets-summary .as-cell .as-sub { font-size:10px; color:var(--ink-3); line-height:1.4; }
 .assets-sec { margin-top:14px; padding-top:12px; border-top:1px dashed var(--line); }
 .assets-sec-title {
   display:flex; align-items:center; gap:8px; flex-wrap:wrap;
@@ -3032,24 +3033,61 @@ class LedgerApp {
     return this._round2(this.getNetIncome() - this.getGrandTotal());
   }
 
+  // 累计结余 = 所有月份结余之和，正负相抵（v8.26）
+  // 本月用内存态（保证和「当前存款」栏一致），历史月份读 localStorage
+  _cumulativeSurplus() {
+    const months = this.getAllMonthData();   // localStorage 所有月份（从新到旧）
+    let sum = 0;
+    months.forEach(m => {
+      // 本月单独用内存态，这里跳过，避免重复
+      if (m.year === this.year && m.month === this.month) return;
+      const d = m.data;
+      // 收入合计：该月自己的 incomeItems（旧数据回退三字段）
+      let inc = 0;
+      if (Array.isArray(d.incomeItems) && d.incomeItems.length) {
+        d.incomeItems.forEach(it => {
+          const v = parseFloat(it.amount); if (isNaN(v)) return;
+          inc += (it.sign === '-' ? -1 : 1) * v;
+        });
+      } else {
+        const ts = d.trackingSigns || {};
+        const s = parseFloat(d.salary), i = parseFloat(d.insurance), h = parseFloat(d.housingFund);
+        if (!isNaN(s)) inc += (ts.salary === '-' ? -1 : 1) * s;
+        if (!isNaN(i)) inc += (ts.insurance === '-' ? -1 : 1) * i;
+        if (!isNaN(h)) inc += (ts.housingFund === '-' ? -1 : 1) * h;
+      }
+      // 支出合计
+      let exp = 0;
+      (d.columns || []).forEach(c => { exp += this._getMonthColTotal(d, c.key); });
+      sum += inc - exp;   // 正负相抵：结余为负的月份也计入
+    });
+    // 加上本月（内存态；即使本月尚未保存进 localStorage 也不漏）
+    sum += this._currentSavings();
+    return this._round2(sum);
+  }
+
   // 净资产 = 存款当前 + 别人欠我的 − 我欠别人的
   _netWorth() {
-    const sv = this._currentSavings();   // v8.25：当前存款动态 = 本月结余
+    const sv = this._currentSavings();          // v8.25：当前存款 = 本月结余
+    const surplus = this._cumulativeSurplus();  // v8.26：累计结余（正负相抵，含本月）
     let owe = 0, recv = 0;
     (this.assets.debts || []).forEach(d => {
       if (d.cleared) return;
       const amt = this._assetNum(d.amount);
       if (d.dir === 'owe') owe += amt; else recv += amt;
     });
-    return { sv, owe, recv, net: sv + recv - owe };
+    // 剩余欠款 = 原始欠款 − 累计结余（下限 0）
+    const oweRemaining = Math.max(0, this._round2(owe - surplus));
+    // 净资产 = 累计结余 + 别人欠我的 − 原始欠款（账完全平，无重复）
+    const net = this._round2(surplus + recv - owe);
+    return { sv, surplus, owe, oweRemaining, recv, net };
   }
 
   updateAssetsTotal() {
     const el = document.getElementById('assetsTotal');
     if (!el) return;
-    const { sv, owe, recv } = this._netWorth();
-    const hasAny = sv !== 0 || owe !== 0 || recv !== 0;
-    const net = sv + recv - owe;
+    const { sv, surplus, owe, recv, net } = this._netWorth();
+    const hasAny = sv !== 0 || owe !== 0 || recv !== 0 || surplus !== 0;
     el.innerHTML = hasAny
       ? `<span class="bt-label">🏦 净资产</span><span class="bt-value" style="color:${net < 0 ? 'var(--danger)' : 'var(--mint-dark)'};">¥${this._money(net)}</span>`
       : `<span class="bt-label">🏦 净资产</span><span class="bt-value">¥0</span>`;
@@ -3064,12 +3102,15 @@ class LedgerApp {
   renderAssetsSummary() {
     const el = document.getElementById('assetsSummary');
     if (!el) return;
-    const { sv, owe, recv, net } = this._netWorth();
-    const cell = (label, val, cls) => `<div class="as-cell"><span class="as-label">${label}</span><span class="as-val ${cls || ''}">${val}</span></div>`;
+    const { sv, surplus, owe, oweRemaining, recv, net } = this._netWorth();
+    const cell = (label, val, cls, sub) => `<div class="as-cell"><span class="as-label">${label}</span><span class="as-val ${cls || ''}">${val}</span>${sub ? `<span class="as-sub">${sub}</span>` : ''}</div>`;
+    const debtSub = oweRemaining > 0 && owe > oweRemaining
+      ? `原欠 ¥${this._money(owe)} · 累计结余已抵 ¥${this._money(owe - oweRemaining)}`
+      : '';
     el.innerHTML = `
       <div class="assets-summary">
         ${cell('💰 当前存款', sv ? `¥${this._money(sv)}` : '¥0', 'mint')}
-        ${cell('🙋 我欠别人的', owe ? `¥${this._money(owe)}` : '¥0', owe ? 'coral' : '')}
+        ${cell('🙋 我欠别人的', oweRemaining ? `¥${this._money(oweRemaining)}` : '¥0', oweRemaining ? 'coral' : '', debtSub)}
         ${cell('🤝 别人欠我的', recv ? `¥${this._money(recv)}` : '¥0', recv ? 'mint' : '')}
         ${cell('🧮 净资产', `¥${this._money(net)}`, net < 0 ? 'coral' : (net > 0 ? 'warn' : ''))}
       </div>`;
@@ -3824,7 +3865,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
