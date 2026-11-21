@@ -1217,8 +1217,6 @@ tbody tr.no-spend .row-total {
   <div class="btn-row" data-page-node-id="9SROoYcKS69HOFPxLkx5cQ">
     <button class="btn btn-primary" onclick="app.generateReceipt()" data-page-node-id="DYThhcyiTQojWA9BdhUElI">🧾 生成月结小票</button>
     <button class="btn btn-green" onclick="app.exportNoSpendDays()" data-page-node-id="2vpsOA9n8EGcqfW9UdWcVs">📅 导出无花销日</button>
-    <button class="btn btn-secondary" onclick="app.fillDemoData()" data-page-node-id="54RSSRba3cXWwQrGtP9Bth">🧪 填充测试数据</button>
-    <button class="btn btn-secondary" onclick="app.clearDemoData()" data-page-node-id="2HBcIcg0a4DWpFx1AZCu8N">🧹 清除测试数据</button>
     <button class="btn btn-secondary" onclick="app.clearMonth()" data-page-node-id="JhKdsI3dPRMXt2ltqigIE9">🗑️ 清空本月</button>
   </div>
 </div>
@@ -1313,7 +1311,7 @@ const TODO_TYPES = {
 
 // 卡片默认顺序（可拖动或点 ↑↓ 调整，存 ledger_layout_v1）
 // 默认：收入置顶、提醒与待办置底
-const CARD_ORDER_DEFAULT = ['income', 'budget', 'ledger', 'assets', 'summary', 'analytics', 'backup', 'todo'];
+const CARD_ORDER_DEFAULT = ['ledger', 'income', 'budget', 'assets', 'summary', 'analytics', 'backup', 'todo'];
 const CARD_NAMES = {
   income:'本月收入与扣款', budget:'预算', ledger:'每日记账',
   assets:'存款与外账', summary:'本月汇总', analytics:'统计分析',
@@ -3490,7 +3488,7 @@ class LedgerApp {
   // ══════════════════════════════════════════════════
   //  卡片排序（拖标题栏 或 点 ↑↓，顺序存 ledger_layout_v1）
   // ══════════════════════════════════════════════════
-  get layoutKey() { return 'ledger_layout_v1'; }
+  get layoutKey() { return 'ledger_layout_v2'; }
 
   loadLayout() {
     const raw = localStorage.getItem(this.layoutKey);
@@ -3865,7 +3863,7 @@ class LedgerApp {
 
   // ── ⑥ 渲染 ────────────────────────────────────
   // ══════════════════════════════════════════════════════════
-  //  🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
+  //  🧹 界面精简·每日记账置顶·保险箱只留「立即备份」（v8.27） + 🧾 总欠款自动抵累计结余（v8.26） + 💰 当前存款=本月结余（v8.25） + 🔒 各记各的·不共享（v8.24） + 💾 保存失败不静默（v8.23） + ☁️ 云同步（v8.17/v8.22 诚实化） + 📍 数据位置（v8.18） + 📝 备注不丢（v8.19） + 🔍 单项 Top5（v8.20/v8.21 饼图修复）
   //  账目自动存到云端：换手机 / 清缓存 / 换入口都不会丢，
   //  也不用手找备份文件。后端是 CloudBase 云函数，前端零 SDK。
   //  ⚠️ 数据隔离（v8.24 · 老妹定的规矩）：【每人一份，各记各的，绝不共享】。
@@ -4338,36 +4336,9 @@ class LedgerApp {
       </div>`;
 
     body.innerHTML = `
-      ${locHtml}
-      <div class="${cls}">
-        <span class="bs-icon">${icon}</span>
-        <div class="bs-main">
-          <div class="bs-title">${title}</div>
-          <div class="bs-sub">${sub}</div>
-        </div>
-      </div>
       <div class="backup-actions">
         <button class="bk-btn primary" onclick="app.exportBackup()">📤 立即备份</button>
-        <button class="bk-btn" onclick="app.importBackup('merge')">📥 合并恢复</button>
-        <button class="bk-btn" onclick="app.importBackup('replace')">🔄 覆盖恢复</button>
-        ${fsOk ? `<button class="bk-btn${linked ? ' on' : ''}" onclick="app.connectBackupFile()">${autoLabel}</button>` : ''}
       </div>
-      <input type="file" id="backupImportInput" accept="application/json,.json"
-             style="display:none" onchange="app.handleBackupFile(this.files[0])">
-      ${fileRow}
-      ${cloudHtml}
-      ${snapHtml}
-      <div class="backup-note">
-        💡 <b>为什么要备份</b>：账目只保存在这台设备的浏览器里。<b>清理浏览器缓存、换手机、换浏览器都会丢，而且找不回来。</b><br>
-        • <b>立即备份</b>：下载一个 .json 文件，存进手机「文件」/ 微信收藏 / 网盘，需要时能导回来。<br>
-        • <b>合并恢复</b>：只补本地没有的，<b>不动现有数据</b>（安全，优先用它）。<br>
-        • <b>覆盖恢复</b>：以备份文件为准整体替换，当前数据会先进回收站。<br>
-        ${fsOk
-          ? '• <b>自动备份</b>：选一个文件后，每次记账自动写入，几乎不用管。'
-          : '• <b>自动备份</b>：当前浏览器不支持（电脑版 Chrome / Edge 可用）。'}
-        <br>⚠️ <b>iPhone 用户特别注意</b>：用 Safari 且超过 7 天没打开，系统可能自动清掉数据。建议每周打开一次并备份。
-      </div>
-      ${trashHtml}
     `;
   }
 
